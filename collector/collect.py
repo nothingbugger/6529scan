@@ -20,6 +20,30 @@ import urllib.error
 import urllib.request
 
 DEFAULT_API = "http://127.0.0.1:6529/api/v1"
+SERVICE_USER = "_validator6529"
+
+
+def detect_api():
+    """Find the loopback port of the validator service (rc.8+ picks a random one).
+
+    Looks for a 127.0.0.1 LISTEN socket owned by the service user's validator
+    process (macOS `netstat -anv` shows the pid without root). Falls back to 6529.
+    """
+    import subprocess
+    try:
+        pids = subprocess.run(["pgrep", "-u", SERVICE_USER, "-x", "validator"],
+                              capture_output=True, text=True, timeout=10).stdout.split()
+        if not pids:
+            return DEFAULT_API
+        out = subprocess.run(["netstat", "-anv", "-p", "tcp"],
+                             capture_output=True, text=True, timeout=10).stdout
+        for line in out.splitlines():
+            f = line.split()
+            if len(f) > 10 and "LISTEN" in f and f[3].startswith("127.0.0.1.") and set(f) & set(pids):
+                return "http://127.0.0.1:%s/api/v1" % f[3].rsplit(".", 1)[1]
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return DEFAULT_API
 
 CERT_FIELDS = (
     "cycle_day", "cycle_root", "level", "signed_weight", "w", "raw_signed_tdh",
@@ -118,8 +142,9 @@ def write_json(path, obj):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="site data directory")
-    ap.add_argument("--api", default=DEFAULT_API)
+    ap.add_argument("--api", default=None, help="node API base (default: auto-detect)")
     a = ap.parse_args()
+    a.api = a.api or detect_api()
     out = os.path.abspath(a.out)
 
     try:

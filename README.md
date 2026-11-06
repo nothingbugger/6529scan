@@ -13,7 +13,7 @@ collector/publish.sh   runs the collector and pushes new data to this repository
 ## Where the data comes from
 
 - **Cycles and certificates** — snapshots from one 6529 validator node, read from its local API
-  (`http://127.0.0.1:6529/api/v1`). The collector writes a whitelist of network-wide fields only:
+  (loopback only; the port is detected automatically). The collector writes a whitelist of network-wide fields only:
   cycle header, roots, certificate, dual-run and 6529.io comparison outcomes. It never publishes
   the node's keys, peers, servers, location or account.
 - **Holders** — the public read-only API at `api.6529.io`, queried live by the visitor's browser.
