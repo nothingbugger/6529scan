@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="An independent, unofficial explorer for the 6529 validator network: daily TDH cycles, certificates and holders.">
+<title>TDH Explorer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101418'/%3E%3Cpath d='M8 21l5-10 4 7 3-5 4 8' fill='none' stroke='%2337c99a' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-in">
+    <a class="brand" href="#/">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" class="brand-bg"/><path d="M8 21l5-10 4 7 3-5 4 8" class="brand-line"/></svg>
+      <span><b>TDH Explorer</b><small>independent · unofficial</small></span>
+    </a>
+    <nav id="nav" aria-label="Sections">
+      <a href="#/" data-r="overview">Overview</a>
+      <a href="#/cycles" data-r="cycles">Cycles</a>
+      <a href="#/holders" data-r="holders">Holders</a>
+      <a href="#/about" data-r="about">About</a>
+    </nav>
+    <button id="theme" class="icon-btn" type="button" aria-label="Toggle colour theme" title="Toggle theme">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="app" class="wrap" aria-live="polite">
+  <p class="muted pad">Loading…</p>
+</main>
+
+<footer class="wrap foot">
+  <p>An independent explorer built by a 6529 validator operator. Not affiliated with or endorsed by 6529.
+  Cycle data comes from one validator node; holder data from the public API at api.6529.io.
+  Verify anything important yourself with <code>validator verify cert</code>.</p>
+  <p id="fresh" class="muted"></p>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
