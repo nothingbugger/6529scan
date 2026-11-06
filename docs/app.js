@@ -1,5 +1,5 @@
 "use strict";
-/* TDH Explorer — independent, unofficial explorer for the 6529 validator network.
+/* 6529 Scan — independent, unofficial explorer for the 6529 validator network.
    Cycle data: ./data (snapshots from one validator node, public fields only).
    Holder data: https://api.6529.io (public, read-only). */
 
@@ -319,7 +319,7 @@ async function viewHolders() {
 async function viewAbout() {
   const rel = h("div.panel", h("p.muted", "Loading releases…"));
   render(
-    h("div.head", h("div", h("h1", "About"), h("p", "What this explorer shows, where the data comes from, and how to run a validator."))),
+    h("div.head", h("div", h("h1", "About"), h("p", "What 6529 Scan shows, where the data comes from, and how to run a validator."))),
     h("div.grid.g2",
       h("div.panel.prose",
         h("h2", "How the network works"),

@@ -1,6 +1,6 @@
-# 6529scan
+# 6529 Scan
 
-An independent, **unofficial** explorer for the 6529 validator network: daily TDH cycles,
+6529 Scan is an independent, **unofficial** explorer for the 6529 validator network: daily TDH cycles,
 certificates, independent checks and TDH holders. Not affiliated with or endorsed by 6529.
 
 ```
