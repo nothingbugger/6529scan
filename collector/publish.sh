@@ -1,21 +1,24 @@
 #!/bin/bash
 # Collect public network data and push it to the site repository when cycles change.
 # Usage: publish.sh /path/to/repo-clone
-# Pushes at most every 6 hours when only the freshness timestamp changed.
+# Pushes at once when cycles change, otherwise at most once an hour (validators, freshness).
 set -euo pipefail
 REPO="${1:?usage: publish.sh /path/to/repo-clone}"
 cd "$REPO"
 
+# Start from the repository's state: data files are regenerated below.
+git checkout --quiet -- docs/data 2>/dev/null || true
+git clean -fdq -- docs/data
 git pull --quiet --rebase origin main
 /usr/bin/python3 collector/collect.py --out docs/data
 
 git add docs/data
 if git diff --cached --quiet -- docs/data/cycles; then
-  # Only network.json changed: refresh it on the site at most every 6 hours.
+  # No new cycle data: refresh the other files on the site at most once an hour.
   last=$(git log -1 --format=%ct -- docs/data/network.json 2>/dev/null || echo 0)
-  if [ $(( $(date +%s) - last )) -lt 21600 ]; then
+  if [ $(( $(date +%s) - last )) -lt 3600 ]; then
     git reset --quiet -- docs/data
-    git checkout --quiet -- docs/data/network.json 2>/dev/null || true
+    git checkout --quiet -- docs/data 2>/dev/null || true
     exit 0
   fi
 fi

@@ -104,6 +104,42 @@ def clean_cycle(rec):
     return out
 
 
+REPORT_FIELDS = ("infrastructure", "continent", "country", "state", "metro", "software", "source_class")
+MACHINE_FIELDS = ("code", "weight", "today", "first_signed_day", "last_signed_day", "signed_7", "signed_30")
+
+
+def clean_validators(network):
+    """Who validates: accounts and machines as the network broadcasts them.
+
+    Drops the `own` flag (it would single out this node), links and key ids.
+    Location is only what each operator chose to publish in its daily report.
+    """
+    members = network.get("members")
+    if not isinstance(members, dict) or not isinstance(members.get("accounts"), list):
+        return None
+    accounts = []
+    for a in members["accounts"]:
+        machines = []
+        for m in a.get("machines") or []:
+            mm = pick(m, MACHINE_FIELDS)
+            rep = m.get("report")
+            mm["report"] = pick(rep, REPORT_FIELDS) if isinstance(rep, dict) else None
+            machines.append(mm)
+        accounts.append({"wallet": a.get("wallet"), "tdh": a.get("tdh"),
+                         "weight": a.get("weight"), "machines": machines})
+    accounts.sort(key=lambda x: x.get("weight") or 0, reverse=True)
+    nxt = [pick(m, ("wallet", "keys", "tdh")) for m in network.get("next_members") or []]
+    return {
+        "cycle_day": members.get("cycle_day"),
+        "w": members.get("w"),
+        "accounts": accounts,
+        "next_day": (members.get("cycle_day") or 0) + 1,
+        "next_members": nxt,
+        "continents": network.get("continents") or [],
+        "places": network.get("places") or [],
+    }
+
+
 def summary(c):
     cert = c.get("certificate") or {}
     hdr = c.get("header") or {}
@@ -198,8 +234,14 @@ def main():
         "latest_certified_day": network.get("latest_certified_day"),
         "latest_final_day": network.get("latest_final_day"),
         "next_keys": network.get("next_keys"),
+        "next_accounts": network.get("next_accounts"),
     })
-    print("ok: %d cycles, latest certified %s" % (len(index), network.get("latest_certified_day")))
+
+    vals = clean_validators(network)
+    if vals:
+        write_json(os.path.join(out, "validators.json"), vals)
+    print("ok: %d cycles, latest certified %s, %s validator accounts" % (
+        len(index), network.get("latest_certified_day"), len(vals["accounts"]) if vals else 0))
     return 0
 
 

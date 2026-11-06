@@ -328,7 +328,9 @@ async function viewAbout() {
         h("h2", "Where this data comes from"),
         h("ul",
           h("li", "Cycles and certificates: snapshots from one validator node, published as static files. Only network-wide facts are published; nothing that identifies the node."),
+          h("li", "Validators: the signer list the network broadcasts (accounts, machines, days signed) and each machine's optional daily report (continent, country if published, home or data center, software). Names and pictures come from public 6529 profiles, looked up by your browser."),
           h("li", "Holders: the public read-only API at api.6529.io, queried live from your browser."),
+          h("li", "Map: d3 and topojson from cdnjs, country shapes from world-atlas (Natural Earth) on jsDelivr."),
           h("li", "Releases: 6529's signed release list at 6529.io/validator/releases.json.")),
         h("h2", "Run a validator"),
         h("p", "Download it only from ", h("a", { href: "https://6529.io/validator", target: "_blank", rel: "noopener" }, "6529.io/validator"),
@@ -347,9 +349,201 @@ async function viewAbout() {
   } catch (e) { rel.replaceChildren(failed("releases", e)); }
 }
 
+/* ---------- validators ---------- */
+const D3_URL = "https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js";
+const TOPO_URL = "https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js";
+const WORLD_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json";
+const CONTINENTS = {
+  NORTH_AMERICA: { name: "North America", lon: -100, lat: 42 },
+  SOUTH_AMERICA: { name: "South America", lon: -60, lat: -16 },
+  EUROPE: { name: "Europe", lon: 14, lat: 51 },
+  AFRICA: { name: "Africa", lon: 19, lat: 4 },
+  ASIA: { name: "Asia", lon: 95, lat: 32 },
+  OCEANIA: { name: "Oceania", lon: 140, lat: -25 },
+  ANTARCTICA: { name: "Antarctica", lon: 0, lat: -80 },
+};
+const contKey = (c) => String(c || "").toUpperCase().replace(/[^A-Z]+/g, "_").replace(/^NORTHAMERICA$/, "NORTH_AMERICA").replace(/^SOUTHAMERICA$/, "SOUTH_AMERICA");
+const regionName = (() => { try { const dn = new Intl.DisplayNames(["en"], { type: "region" }); return (c) => { try { return dn.of(c); } catch { return c; } }; } catch { return (c) => c; } })();
+const flag = (cc) => (/^[A-Z]{2}$/.test(cc || "") ? String.fromCodePoint(...[...cc].map((ch) => 0x1f1a5 + ch.charCodeAt(0))) : "");
+const shortAddr = (w) => (w ? w.slice(0, 6) + "…" + w.slice(-4) : "—");
+const ipfs = (u) => (typeof u === "string" && u.startsWith("ipfs://") ? "https://ipfs.io/ipfs/" + u.slice(7).replace(/^ipfs\//, "") : safeUrl(u));
+
+const scriptCache = {};
+function loadScript(src) {
+  return (scriptCache[src] ||= new Promise((ok, ko) => {
+    const el = document.createElement("script");
+    el.src = src; el.async = true; el.crossOrigin = "anonymous"; el.referrerPolicy = "no-referrer";
+    el.onload = ok; el.onerror = () => { delete scriptCache[src]; ko(new Error("couldn't load " + src)); };
+    document.head.append(el);
+  }));
+}
+
+/* Wallet -> 6529 identity, resolved by the visitor's browser (public API), a few at a time. */
+const idCache = new Map();
+function identity(wallet) {
+  if (!idCache.has(wallet)) {
+    idCache.set(wallet, getJSON(API_6529 + "/identities/" + wallet, { timeout: 12000 })
+      .then((d) => ({ handle: d.handle || null, pfp: ipfs(d.pfp), level: d.level, display: d.display }))
+      .catch(() => ({})));
+  }
+  return idCache.get(wallet);
+}
+async function resolveAll(wallets, onEach, limit = 6) {
+  let i = 0;
+  const worker = async () => { while (i < wallets.length) { const w = wallets[i++]; onEach(w, await identity(w)); } };
+  await Promise.all(Array.from({ length: Math.min(limit, wallets.length) }, worker));
+}
+function whoCell(wallet) {
+  const ph = h("span.ph"), name = h("b", shortAddr(wallet));
+  const cell = h("div.who", { "data-wallet": wallet }, ph, name);
+  return cell;
+}
+function fillWho(cell, id) {
+  if (!cell || !id) return;
+  const wallet = cell.dataset.wallet;
+  const kids = [];
+  kids.push(id.pfp ? h("img", { src: id.pfp, alt: "", loading: "lazy", referrerpolicy: "no-referrer",
+    onerror: (e) => e.target.replaceWith(h("span.ph")) }) : h("span.ph"));
+  kids.push(id.handle
+    ? h("a", { href: PROFILE + encodeURIComponent(id.handle), target: "_blank", rel: "noopener", title: wallet }, h("b", id.handle))
+    : h("a", { href: "https://etherscan.io/address/" + wallet, target: "_blank", rel: "noopener" }, h("b.mono", shortAddr(wallet))));
+  cell.replaceChildren(...kids);
+}
+
+async function drawMap(box, reports) {
+  try {
+    await loadScript(D3_URL); await loadScript(TOPO_URL);
+    const world = await getJSON(WORLD_URL, { timeout: 20000 });
+    const d3 = window.d3, topojson = window.topojson;
+    const W = 960, H = 470;
+    const proj = d3.geoNaturalEarth1().fitExtent([[6, 6], [W - 6, H - 6]], { type: "Sphere" });
+    const path = d3.geoPath(proj);
+    const countries = topojson.feature(world, world.objects.countries).features;
+
+    const byCountry = {}, byCont = {};
+    reports.forEach((r) => {
+      if (r.country) byCountry[r.country] = (byCountry[r.country] || 0) + 1;
+      const k = contKey(r.continent); if (CONTINENTS[k]) byCont[k] = (byCont[k] || 0) + 1;
+    });
+    const numToCc = {}; Object.entries(window.ISO_NUM || {}).forEach(([cc, n]) => (numToCc[n] = cc));
+
+    const svg = d3.create("svg").attr("viewBox", `0 0 ${W} ${H}`).attr("role", "img")
+      .attr("aria-label", "Where validators say they are");
+    svg.append("path").attr("d", path({ type: "Sphere" })).attr("class", "sea");
+    svg.append("g").selectAll("path").data(countries).join("path")
+      .attr("d", path)
+      .attr("class", (f) => (byCountry[numToCc[String(f.id).padStart(3, "0")]] ? "land on" : "land"))
+      .append("title").text((f) => {
+        const cc = numToCc[String(f.id).padStart(3, "0")], n = byCountry[cc];
+        return (f.properties && f.properties.name || cc || "") + (n ? ` — ${n} validator machine${n > 1 ? "s" : ""}` : "");
+      });
+    const max = Math.max(1, ...Object.values(byCont));
+    const g = svg.append("g");
+    Object.entries(byCont).forEach(([k, n]) => {
+      const [x, y] = proj([CONTINENTS[k].lon, CONTINENTS[k].lat]);
+      const r = 14 + 22 * Math.sqrt(n / max);
+      const b = g.append("g").attr("transform", `translate(${x},${y})`);
+      b.append("circle").attr("r", r).attr("class", "bubble");
+      b.append("text").attr("class", "bubble-n").attr("dy", "0.35em").text(n);
+      b.append("text").attr("class", "bubble-l").attr("y", r + 14).text(CONTINENTS[k].name);
+      b.append("title").text(`${CONTINENTS[k].name}: ${n} reporting machine${n > 1 ? "s" : ""}`);
+    });
+    box.replaceChildren(svg.node());
+  } catch (e) {
+    box.replaceChildren(h("p.muted", "The map couldn't load (" + e.message + ")."));
+  }
+}
+
+function countBy(list, fn) {
+  const m = new Map();
+  list.forEach((x) => { const k = fn(x); if (k != null) m.set(k, (m.get(k) || 0) + 1); });
+  return [...m.entries()].sort((a, b) => b[1] - a[1]);
+}
+function breakdown(title, rows, total, fmt = (k) => k) {
+  return h("div.panel", h("h3", title),
+    rows.length ? rows.map(([k, n]) => h("div.meter",
+      h("div.lbl", h("span", fmt(k)), h("b", `${n}`)),
+      h("div.bar", h("i", { style: "width:" + ((n / Math.max(1, total)) * 100).toFixed(1) + "%" }))))
+      : h("p.muted", "Nothing reported yet."));
+}
+
+async function viewValidators() {
+  let v, net;
+  try { [v, net] = await Promise.all([local("validators.json"), local("network.json")]); }
+  catch (e) { return render(failed("validators", e)); }
+  const accounts = v.accounts || [];
+  const machines = accounts.flatMap((a) => (a.machines || []).map((m) => ({ ...m, wallet: a.wallet })));
+  const reports = machines.map((m) => m.report).filter(Boolean);
+  const signedToday = machines.filter((m) => m.today === "SIGNED").length;
+  const W = v.w || accounts.reduce((s, a) => s + (a.weight || 0), 0);
+  const current = new Set(accounts.map((a) => a.wallet));
+  const joining = (v.next_members || []).filter((m) => !current.has(m.wallet));
+
+  const mapBox = h("div.map", h("p.muted.pad", "Loading map…"));
+  const table = h("div.table-wrap", h("table",
+    h("thead", h("tr", h("th.n", "#"), h("th", "Validator"), h("th.n", "TDH"), h("th.n", "Vote weight"),
+      h("th.n", "Machines"), h("th", "Today"), h("th", "Where"), h("th", "Type"), h("th", "Ethereum data"), h("th", "Software"))),
+    h("tbody", accounts.map((a, i) => {
+      const ms = a.machines || [];
+      const rep = ms.map((m) => m.report).find(Boolean) || {};
+      const signed = ms.filter((m) => m.today === "SIGNED").length;
+      const cc = rep.country;
+      const where = cc ? `${flag(cc)} ${regionName(cc)}` : (CONTINENTS[contKey(rep.continent)] || {}).name || "—";
+      return h("tr",
+        h("td.n.muted", i + 1),
+        h("td", whoCell(a.wallet)),
+        h("td.n", num(a.tdh)),
+        h("td.n", W ? pct((a.weight || 0) / W) : "—"),
+        h("td.n", ms.length),
+        h("td", h("span.badge." + (signed === ms.length ? "ok" : signed ? "warn" : "bad"), `${signed}/${ms.length} signed`)),
+        h("td", where),
+        h("td", rep.infrastructure ? rep.infrastructure : h("span.muted", "—")),
+        h("td", rep.source_class ? (rep.source_class === "OWN_NODE" ? "own node" : "verified servers") : h("span.muted", "—")),
+        h("td", rep.software ? h("code", rep.software) : h("span.muted", "—")));
+    }))));
+
+  const joinList = joining.length ? h("div.table-wrap", h("table",
+    h("thead", h("tr", h("th", "Validator"), h("th.n", "TDH"), h("th.n", "Keys"))),
+    h("tbody", joining.sort((a, b) => (b.tdh || 0) - (a.tdh || 0)).map((m) =>
+      h("tr", h("td", whoCell(m.wallet)), h("td.n", num(m.tdh)), h("td.n", num(m.keys)))))))
+    : h("div.panel", h("p.muted", "No new accounts registered for the next day yet."));
+
+  const reportsN = reports.length;
+  render(
+    h("div.head", h("div", h("h1", "Validators"),
+      h("p", `Who signed ${fmtDay(v.cycle_day)}, as the network broadcasts it. Names come from public 6529 profiles.`))),
+    h("div.grid.tiles",
+      tile("Validator accounts", num(accounts.length), "signed today"),
+      tile("Machines", num(machines.length), `${num(signedToday)} signed today`),
+      tile("Joining next day", num(joining.length), `${num(net.next_accounts)} accounts registered`),
+      tile("Reporting a location", `${num(reportsN)} / ${num(machines.length)}`, "machines with a daily report")),
+    h("div.section", h("h2", "Where validators run"),
+      h("div.panel", mapBox,
+        h("p.muted", { style: "margin:10px 0 0;font-size:12.5px" },
+          "Only what each machine publishes in its daily report: its continent and, if the operator switches it on, its country. ",
+          "Circles count reporting machines per continent; shaded countries are those named. Most validators publish nothing, so this is a lower bound."))),
+    h("div.section.grid.tiles", { style: "grid-template-columns:repeat(auto-fit,minmax(220px,1fr))" },
+      breakdown("Home or data center", countBy(reports, (r) => r.infrastructure), reportsN),
+      breakdown("Ethereum data", countBy(reports, (r) => r.source_class), reportsN, (k) => (k === "OWN_NODE" ? "Own Ethereum node" : "Verified public servers")),
+      breakdown("Software", countBy(reports, (r) => r.software), reportsN),
+      breakdown("Continent", countBy(reports, (r) => (CONTINENTS[contKey(r.continent)] || {}).name), reportsN)),
+    h("div.section", h("h2", "Who signed"), table),
+    h("div.section", h("h2", `Joining on ${fmtDay(v.next_day)}`), joinList),
+    h("div.section", h("div.callout", h("b", "What about hardware? "),
+      "The network doesn't broadcast it. A validator's daily report carries only coarse labels — continent, country if published, home or data center, its software and where its Ethereum data came from. CPU, memory and disk stay on the machine.")));
+
+  drawMap(mapBox, reports);
+  const cells = new Map();
+  app.querySelectorAll(".who[data-wallet]").forEach((c) => {
+    const w = c.dataset.wallet; if (!cells.has(w)) cells.set(w, []); cells.get(w).push(c);
+  });
+  resolveAll([...cells.keys()], (w, id) => (cells.get(w) || []).forEach((c) => fillWho(c, id)));
+}
+
 /* ---------- router ---------- */
 const routes = [
   [/^#?\/?$/, "overview", viewOverview],
+  [/^#\/validators$/, "validators", viewValidators],
   [/^#\/cycles$/, "cycles", viewCycles],
   [/^#\/cycle\/(\d{1,7})$/, "cycles", (m) => viewCycle(m[1])],
   [/^#\/holders$/, "holders", viewHolders],

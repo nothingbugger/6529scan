@@ -138,6 +138,15 @@ input[type=search]:focus { outline: 2px solid var(--accent); outline-offset: -1p
 .who img, .who .ph { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; background: var(--raised); flex: none; }
 .who b { overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
 
+.map svg { width: 100%; height: auto; display: block; }
+.map .sea { fill: var(--raised); }
+.map .land { fill: var(--line); stroke: var(--panel); stroke-width: .5; }
+.map .land.on { fill: var(--accent); opacity: .55; }
+.map .bubble { fill: var(--accent); fill-opacity: .85; stroke: var(--panel); stroke-width: 2; }
+.map .bubble-n { fill: #fff; font: 700 15px var(--sans); text-anchor: middle; }
+.map .bubble-l { fill: var(--text); font: 600 12px var(--sans); text-anchor: middle; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; }
+.who a b { color: var(--text); }
+.who a:hover b { color: var(--accent); }
 .callout { border: 1px dashed var(--line); border-radius: var(--radius); padding: 14px 16px; color: var(--muted); font-size: 13.5px; }
 .callout b { color: var(--text); }
 .prose { max-width: 720px; }
