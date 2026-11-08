@@ -31,11 +31,11 @@ def detect_api():
     """
     import subprocess
     try:
-        pids = subprocess.run(["pgrep", "-u", SERVICE_USER, "-x", "validator"],
+        pids = subprocess.run(["/usr/bin/pgrep", "-u", SERVICE_USER, "-x", "validator"],
                               capture_output=True, text=True, timeout=10).stdout.split()
         if not pids:
             return DEFAULT_API
-        out = subprocess.run(["netstat", "-anv", "-p", "tcp"],
+        out = subprocess.run(["/usr/sbin/netstat", "-anv", "-p", "tcp"],
                              capture_output=True, text=True, timeout=10).stdout
         for line in out.splitlines():
             f = line.split()
